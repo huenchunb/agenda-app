@@ -96,8 +96,7 @@ export const Layout: React.FC<LayoutProps> = ({
             <ThemeToggle />
           </div>
           <div className="text-[11px] text-muted-foreground/60 px-2 leading-relaxed">
-            &copy; 2026 AgendaClickk.<br />
-            Juan Workspace
+            &copy; 2026 AgendaClickk.
           </div>
         </div>
       </aside>
