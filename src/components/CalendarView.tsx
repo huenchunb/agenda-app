@@ -4,6 +4,7 @@ import type { Appointment } from '../context/AppContext';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Info } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
+import { toast } from 'sonner';
 import { 
   startOfWeek, 
   addDays, 
@@ -28,7 +29,7 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
   onSlotClick,
   onAppointmentClick,
 }) => {
-  const { appointments, clients, services } = useApp();
+  const { appointments, clients, services, updateAppointment, checkOverlap } = useApp();
   
   // App state for active view mode and focused date
   const [viewMode, setViewMode] = useState<ViewMode>('week');
@@ -134,6 +135,81 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
     onSlotClick(dateStr, '09:00');
   };
 
+  // Handle drop in Day/Week view (hour snapping)
+  const handleDrop = (e: React.DragEvent, targetDate: string, targetHour: number) => {
+    e.preventDefault();
+    const appId = e.dataTransfer.getData("text/plain");
+    if (!appId) return;
+
+    const app = appointments.find((a) => a.id === appId);
+    if (!app) return;
+
+    const service = services.find((s) => s.id === app.serviceId);
+    if (!service) return;
+
+    // Retain original minutes for precise drag representation
+    const [, origMin] = app.startTime.split(':');
+    const newStartTime = `${targetHour.toString().padStart(2, '0')}:${origMin}`;
+
+    const [h, m] = newStartTime.split(':').map(Number);
+    const startMinutes = h * 60 + m;
+    const endMinutes = startMinutes + service.duration;
+    const endHours = Math.floor(endMinutes / 60).toString().padStart(2, '0');
+    const endMins = (endMinutes % 60).toString().padStart(2, '0');
+    const newEndTime = `${endHours}:${endMins}`;
+
+    // Overlap validation
+    if (checkOverlap(targetDate, newStartTime, newEndTime, app.id)) {
+      toast.error('No se puede reprogramar: Se traslapa con otra cita reservada.');
+      return;
+    }
+
+    const result = updateAppointment({
+      ...app,
+      date: targetDate,
+      startTime: newStartTime,
+      endTime: newEndTime,
+    });
+
+    if (result.success) {
+      const client = clients.find((c) => c.id === app.clientId);
+      toast.success(`Cita de ${client?.name || ''} reprogramada para las ${newStartTime}.`);
+    } else {
+      toast.error(result.error || 'Error al reprogramar la cita.');
+    }
+  };
+
+  // Handle drop in Month view (date change, retain time)
+  const handleMonthDrop = (e: React.DragEvent, targetDate: string) => {
+    e.preventDefault();
+    const appId = e.dataTransfer.getData("text/plain");
+    if (!appId) return;
+
+    const app = appointments.find((a) => a.id === appId);
+    if (!app) return;
+
+    const service = services.find((s) => s.id === app.serviceId);
+    if (!service) return;
+
+    // Overlap validation
+    if (checkOverlap(targetDate, app.startTime, app.endTime, app.id)) {
+      toast.error('No se puede reprogramar: Se traslapa con otra cita reservada en el día destino.');
+      return;
+    }
+
+    const result = updateAppointment({
+      ...app,
+      date: targetDate,
+    });
+
+    if (result.success) {
+      const client = clients.find((c) => c.id === app.clientId);
+      toast.success(`Cita de ${client?.name || ''} movida al ${targetDate}.`);
+    } else {
+      toast.error(result.error || 'Error al mover la cita.');
+    }
+  };
+
   return (
     <Card className="flex flex-col flex-1 bg-card/60 border border-border/40 overflow-hidden rounded-2xl shadow-xl backdrop-blur-md">
       
@@ -232,15 +308,18 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   ))}
                 </div>
 
-                {/* Clickable slots */}
+                {/* Clickable slots / Drop targets */}
                 {Array.from({ length: totalHours }).map((_, hourIdx) => {
                   const hour = startHour + hourIdx;
                   return (
                     <div
                       key={hour}
                       onClick={() => handleCellClick(focusedDate, hour)}
-                      className="absolute w-full cursor-pointer hover:bg-primary/5 transition-all duration-150"
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => handleDrop(e, format(focusedDate, 'yyyy-MM-dd'), hour)}
+                      className="absolute w-full cursor-pointer hover:bg-primary/5 transition-all duration-150 border-b border-transparent"
                       style={{ top: `${hourIdx * hourHeight}px`, height: `${hourHeight}px` }}
+                      title={`Agendar / Soltar a las ${hour.toString().padStart(2, '0')}:00`}
                     />
                   );
                 })}
@@ -260,12 +339,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     return (
                       <div
                         key={app.id}
+                        draggable={!isCancelled}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("text/plain", app.id);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
                         onClick={(e) => {
                           e.stopPropagation();
                           onAppointmentClick(app);
                         }}
                         style={{ top: `${top + 2}px`, height: `${height - 4}px`, zIndex: 10 }}
-                        className={`absolute left-3 right-3 px-4 py-3.5 border rounded-2xl flex flex-col justify-between overflow-hidden shadow-sm transition-all duration-300 cursor-pointer select-none group/card ${
+                        className={`absolute left-3 right-3 px-4 py-3.5 border rounded-2xl flex flex-col justify-between overflow-hidden shadow-sm transition-all duration-300 cursor-pointer select-none group/card active:scale-95 ${
                           isCancelled 
                             ? 'bg-muted/40 border-muted text-muted-foreground/60 line-through hover:bg-muted/60'
                             : getServiceColorClasses(service.color)
@@ -364,12 +448,16 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                   const dayAppointments = appointments.filter((app) => app.date === dateStr && isWithinGrid(app));
                   return (
                     <div key={dayIdx} className="flex-1 h-full border-r border-border/40 last:border-r-0 relative">
+                      
+                      {/* Clickable slot drop targets */}
                       {Array.from({ length: totalHours }).map((_, hourIdx) => {
                         const hour = startHour + hourIdx;
                         return (
                           <div
                             key={hour}
                             onClick={() => handleCellClick(day, hour)}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => handleDrop(e, dateStr, hour)}
                             className="absolute w-full cursor-pointer hover:bg-primary/5 transition-all"
                             style={{ top: `${hourIdx * hourHeight}px`, height: `${hourHeight}px` }}
                           />
@@ -388,12 +476,17 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                         return (
                           <div
                             key={app.id}
+                            draggable={!isCancelled}
+                            onDragStart={(e) => {
+                              e.dataTransfer.setData("text/plain", app.id);
+                              e.dataTransfer.effectAllowed = "move";
+                            }}
                             onClick={(e) => {
                               e.stopPropagation();
                               onAppointmentClick(app);
                             }}
                             style={{ top: `${top + 2}px`, height: `${height - 4}px`, zIndex: 10 }}
-                            className={`absolute left-1 right-1 px-2.5 py-1.5 border rounded-xl flex flex-col justify-between overflow-hidden shadow-sm transition-all cursor-pointer select-none group/card ${
+                            className={`absolute left-1 right-1 px-2.5 py-1.5 border rounded-xl flex flex-col justify-between overflow-hidden shadow-sm transition-all cursor-pointer select-none group/card active:scale-95 ${
                               isCancelled 
                                 ? 'bg-muted/40 border-muted text-muted-foreground/60 line-through'
                                 : getServiceColorClasses(service.color)
@@ -452,7 +545,9 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                     <div
                       key={i}
                       onClick={() => handleMonthDayClick(day)}
-                      className={`min-h-[110px] bg-card p-2 flex flex-col gap-1 cursor-pointer transition hover:bg-muted/10 relative ${
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => handleMonthDrop(e, dateStr)}
+                      className={`min-h-[115px] bg-card p-2 flex flex-col gap-1 cursor-pointer transition hover:bg-muted/10 relative ${
                         isCurrentMonth ? '' : 'bg-muted/15'
                       }`}
                     >
@@ -484,16 +579,22 @@ export const CalendarView: React.FC<CalendarViewProps> = ({
                           return (
                             <div
                               key={app.id}
+                              draggable={!isCancelled}
+                              onDragStart={(e) => {
+                                e.stopPropagation(); // Avoid cell drag conflicts
+                                e.dataTransfer.setData("text/plain", app.id);
+                                e.dataTransfer.effectAllowed = "move";
+                              }}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onAppointmentClick(app);
                               }}
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-medium border truncate transition-all ${
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-medium border truncate transition-all cursor-grab active:cursor-grabbing ${
                                 isCancelled 
                                   ? 'bg-muted/40 border-muted text-muted-foreground/60 line-through'
                                   : getServiceColorClasses(service.color)
                               }`}
-                              title={`${app.startTime} - ${service.name} (${client.name})`}
+                              title={`${app.startTime} - ${service.name} (${client.name}) - Arrastra para reprogramar`}
                             >
                               <span className="font-semibold">{app.startTime}</span> {service.name}
                             </div>
