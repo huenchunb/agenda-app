@@ -48,11 +48,11 @@ export const Layout: React.FC<LayoutProps> = ({
           {/* Logo / Brand */}
           <div className="flex items-center gap-3 px-2">
             <div className="bg-primary text-primary-foreground h-10 w-10 rounded-xl flex items-center justify-center shadow-lg shadow-primary/20 font-bold text-lg tracking-wider">
-              AG
+              AC
             </div>
             <div>
-              <h1 className="font-bold text-lg tracking-tight leading-tight m-0">AgendaTeams</h1>
-              <p className="text-xs text-muted-foreground m-0">Gestor de Citas</p>
+              <h1 className="font-bold text-lg tracking-tight leading-tight m-0">AgendaClickk</h1>
+              <p className="text-xs text-muted-foreground m-0">Citas para Servicios</p>
             </div>
           </div>
 
@@ -96,8 +96,8 @@ export const Layout: React.FC<LayoutProps> = ({
             <ThemeToggle />
           </div>
           <div className="text-[11px] text-muted-foreground/60 px-2 leading-relaxed">
-            &copy; 2026 AgendaTeams Inc.<br />
-            Juan Workspace OS Mac
+            &copy; 2026 AgendaClickk.<br />
+            Juan Workspace
           </div>
         </div>
       </aside>
@@ -106,9 +106,9 @@ export const Layout: React.FC<LayoutProps> = ({
       <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border/40 bg-card/80 backdrop-blur-md sticky top-0 z-30">
         <div className="flex items-center gap-2">
           <div className="bg-primary text-primary-foreground h-8 w-8 rounded-lg flex items-center justify-center font-bold text-sm">
-            AG
+            AC
           </div>
-          <h1 className="font-bold text-base m-0">AgendaTeams</h1>
+          <h1 className="font-bold text-base m-0">AgendaClickk</h1>
         </div>
         
         <div className="flex items-center gap-2">
